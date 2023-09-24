@@ -103,11 +103,21 @@ SELECT * FROM employees WHERE CAST(salary AS INT) = 5000;
 - In Oracle, to enable, we can add PARALLEL along with the number of CPU cores to improve performance.
 ```sql
 ALTER TABLE employees PARALLEL 4;
----or for a session
+---or for a session, table, index, create table...
 ALTER SESSION ENABLE PARALLEL DML;
-```
-```sql
-SELECT * FROM pg_stats where tablename = 'employees';
 ```
 - In PostgreSQL, parallelism is enabled by default with number of workers = 2, we can increase the number per gather using `SET max_parallel_workers_per_gather=4`
 - In SQL Server we can check and update `MAXDOP`.
+- While this significantly improves performance, if abused, it could lead to issue when multiple sessions access the same parallel-enabled table and cause the CPU to spike.
+### Case study 1: Index parallel
+- In many databases, indexes are used frequently and there are a lot of indexes for each column.
+- When rebuilding indexes with parallel to speed up the rebuild process, this parallel is also set to the indexes by accident
+```sql
+--Oracle
+ALTER INDEX idx_emp_salary REBUILD PARALLEL 16;
+```
+- After rebuidling, the index `idx_emp_salary` will have PARALLEL = 16 even though we never set it.
+- The correct way to rebuild parallel an index is to reset after it's complete
+```sql
+ALTER INDEX idx_emp_salary NOPARALLEL;
+```
