@@ -67,3 +67,47 @@ SELECT /*+ INDEX(e, IDX_EMP_SALARY) */ * FROM emp e WHERE e.salary < 5000000
 - The statistics that were gathered before become obsolete.
 - The optimizer creates wrong execution plans based on the obsolete statistics that were gathered a long time ago when the tables were not large
 - We must make sure that the statistics collected are the latest.
+
+## Data types
+- Wrong data types could lead to database has wrong execution plans.
+- Example: we have an Employees table
+```sql
+CREATE TABLE employees (
+    id serial primary key,
+    first_name varchar(100),
+    --wrong type
+    salary varchar(10)
+)
+```
+- If we create an index based on the salary, the queries with where salary condition will still not scan from the index
+```sql
+CREATE INDEX idx_emp_salary ON employees (salary);
+--this will still scan the whole table
+SELECT * FROM employees WHERE salary = 40000;
+```
+- This is because the salary is varchar and has to be parsed to number while the index itself only has salary column as varchar, thus the optimizer cannot query from there.
+- `Solution 1`: Update the data type of the salary column, however this could affect the operation of the database, especially if it's critical.
+- `Solution 2`: Query with a varchar, this however doesn't work if we want to use math operations like > or <
+```sql
+SELECT * FROM employees WHERE salary = '50000';
+```
+- `Solution 3`: Create index from parse function. Since the database in the background has to parse salary to number anyway, we can create an index from this function.
+```sql
+CREATE INDEX idx_emp_salary ON employees (CAST(salary AS INT));
+--remember to cast since we create the index from cast function.
+SELECT * FROM employees WHERE CAST(salary AS INT) = 5000;
+```
+
+## Parallelism on too many objects
+- Parallelism is a feature to enable multicores for a single query.
+- In Oracle, to enable, we can add PARALLEL along with the number of CPU cores to improve performance.
+```sql
+ALTER TABLE employees PARALLEL 4;
+---or for a session
+ALTER SESSION ENABLE PARALLEL DML;
+```
+```sql
+SELECT * FROM pg_stats where tablename = 'employees';
+```
+- In PostgreSQL, parallelism is enabled by default with number of workers = 2, we can increase the number per gather using `SET max_parallel_workers_per_gather=4`
+- In SQL Server we can check and update `MAXDOP`.
