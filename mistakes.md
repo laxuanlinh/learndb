@@ -121,3 +121,98 @@ ALTER INDEX idx_emp_salary REBUILD PARALLEL 16;
 ```sql
 ALTER INDEX idx_emp_salary NOPARALLEL;
 ```
+
+## Unusable, invisible indexes 
+- Unusable are broken indexes that cannot be used and must be rebuilt
+- There are multiple reasons for an index to break, it could be because 
+    - SQL loader fails to update the index because it runs out of space 
+    - Failure midway when building index
+    - Unique key has duplicate
+    - ...
+- Invisible are indexes that the database cannot see so it doesn't consider when constructing execution plan.
+- As databases are passed down for generations of developers, there is a risk that at some time an index is set to invisible
+
+## No partitions or wrong partitioning for large tables
+- When the database is not changed but becomes slower over time, it could be due to the data getting larger but we don't have proper partitioning.
+- When we manually create partititions based on a certain criteria, the data is inserted and searched in the parititions corresponding to the query's range, how ever if it doesn't find the partition, it has to insert to the `partition max`
+- Overtime if we forget to create new parittions, this partition max becomes larger and partitioning is useless.
+- We need to check or better yet, automate the partitioning process so we never forget about it.
+
+## Improper creation of temp tables
+- Sometimes we create temp tables for calculating purposes but we create it improperly using standing CREATE TABLE command then use DELETE after done with it.
+- All databases support CREATE TEMP TABLE and the system will delete automatically after the table is no longer used.
+- TEMP TABLE can be indexed and created by separated sessions.
+- In SQL Server, can create temporary tables using `SELECT INTO #table_name` or `CREATE TABLE #table_name`, note the `#` before table name
+- In PostgreSQL, can create using `CREATE TEMP TABLE table_name`
+- Temp tables are automatically deleted after we disconnect sessions, `ON COMMIT DROP` or we can manually `DROP TABLE`
+
+## Tablespace and Filegroup
+- In PostgreSQL, to check tablespace
+```sql
+\db
+        List of tablespaces
+    Name    |   Owner    | Location 
+------------+------------+----------
+ pg_default | laxuanlinh | 
+ pg_global  | laxuanlinh | 
+(2 rows)
+```
+- Oracle
+```sql
+SELECT DISTINCT owner, tablespace_name from dba_segments order by tablespace_name
+
+```
+- In SQL Server 
+```sql
+SELECT o.[name], o.[type], i.[name], i.[index_id], f.[name] FROM sys.indexes i
+INNER JOIN sys.filegroups f
+ON i.data_space_id = f.data_space_id
+INNER JOIN sys.all_objects o
+ON i.[object_id] = o.[object_id] WHERE i.data_space_id = f.data_space_id
+AND o.type = 'U' -- User Created Tables
+GO
+```
+- We need to check who owns these tablespaces, for example, user should not own the SYSTEM tablespace or there shouldn't be a generic DATA space where all data is stored.
+- Tables, indexes should be stored in different specified tablespaces.
+- To create tablespace in Postgres
+```sql
+CREATE TABLESPACE 'tablespace_name' OWNER 'owner' LOCATION 'directory';
+```
+- To move a table to a new space for both Oracle and PostgreSQL
+```sql
+ALTER TABLE 'table_name' TABLESPACE 'tablespace_name'
+--or create table in a tablespace
+CREATE TABLE 'table_name' TABLESPACE 'tablespace_name';
+```
+- For index, we need to rebuild in Oracle
+```sql
+ALTER INDEX 'idx_name' REBUILD TABLESPACE 'tablespace_name' | PARALLEL | NOLOGGING | ONLINE;
+```
+- For PostgreSQL it's a bit similar
+```sql
+ALTER INDEX 'idx_name' SET TABLESPACE tablespace_name;
+```
+- For large objects (`LOB`), they're not stored the same as tables so we need to move them separately, we can create a separate tablespace for `LOB`
+- For partitioned tables, we need to list out all partitions and move them using name to tablespaces.
+- We can create tablespace `HISTORY` to store older partitions while newer are stored in `DAILY` tablespace.
+
+## Database lifecycle management
+- We need to have a comprehensive database lifecycle management strategy.
+- There are a few types of data in a database
+    - Config data (features, entitlements)
+    - Master data (users, accounts)
+    - Transaction data
+- Transaction data is more likely to grow fast so we need to know which data range is frequently updated, which is less updated and which is read only.
+- For example, table transaction, data in the last 3 months is considered `HOT` so its partitions are stored in better I/O disks.
+- Partitions in the last 3 years can be stored in slower disks
+- Partitions from 10 years ago can be set to `READ ONLY`, can be backed up only once and exclude from daily backup because it's never touched again.
+
+## Database fragmentation
+- Fragementation in database is when we do update or delete and create spaces within the table.
+- As we insert new data to Oracle, High Water Mark moves upward to claim new data block instead of inserting to the spaces, this leads to the size of table increases and wasted space.
+- We need to routinely check the fragmentation of tables and indexes in database to make sure they're not too fragmented.
+- To fix the fragmentation:
+    - For table we can move table to the same `TABLESPACE` to automatically reclaim space.
+    - Export then import table
+    - Or can `ALTER TABLE SHRINK` which takes longer but not prone to locks if there are DML operations
+- For indexes, we can `ALTER INDEX REBUILD`.
