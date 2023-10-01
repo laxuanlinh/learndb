@@ -214,5 +214,44 @@ ALTER INDEX 'idx_name' SET TABLESPACE tablespace_name;
 - To fix the fragmentation:
     - For table we can move table to the same `TABLESPACE` to automatically reclaim space.
     - Export then import table
-    - Or can `ALTER TABLE SHRINK` which takes longer but not prone to locks if there are DML operations
+    - Or can `ALTER TABLE SHRINK` which takes longer but not prone to locks if there are `DML` operations
 - For indexes, we can `ALTER INDEX REBUILD`.
+
+## Not analyze index effectiveness
+- Create too many indexes but some of them are never used, this leads too `SELECT` queries are not faster but `DML` are slower.
+- If we find an index that is never used, we can set it to `INVISIBLE` for a while and monitor the system's performance.
+- If we are confident that the index does not affect performance, we can backup the index creation script, then `DROP` it
+
+## Edit Store Procedures Online
+- Editing Store procedures online is dangerous and could lead to the whole system to go down.
+- We should only edit store procedures when the system is not accessed by any sessions, basically we need to take the system down for maintainance.
+
+## Put user and system data in the same tablespace
+- We should put system config data and app data in separate tablespace to avoid conflicts.
+
+## Resource conflict
+- For systems that has multiple databases and apps on the same servers, when a component has an issue with resource, for example, uses up too much CPU or IO, could lead to other components to hang.
+- We should separate databases and apps into different servers.
+
+## Abuse DB Links
+- When a database needs to query data from another database, we can create a DB link.
+- This might serve well if we only have a few links but can cause issue when the number of links grow.
+- The execution plans are not optimal because the database doesn't know the statistics of other databases.
+- It's also more difficult to rollback if a transaction fails.
+- When there are many database links, we should consider other technologies like data synchronization.
+
+## Sequence cache
+- Sequence is a feature to generate unique integer
+```sql
+CREATE SEQUENCE testing1;
+SELECT NEXTVAL('testing1'); --1
+SELECT NEXTVAL('testing1'); --2
+SELECT NEXTVAL('testing1'); --3
+```
+- Sequence cache is a memory to store the 
+- By default cache can store 20 values but it can also be set to 0 which is bad.
+- We should check any of the sequences has a cache size = 0 and increase it.
+
+## Underutilized reserve resources
+- We usually have standby databases that synchronized from main database but it's only used when the database goes down.
+- We should utilize the standby database as read-only database for reporting.
