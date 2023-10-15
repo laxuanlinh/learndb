@@ -78,3 +78,6 @@
   ```sql
   CREATE UNIQUE INDEX idx_user_fn_ln ON schema1.users (first_name DESC, last_name ASC);
   ```
+- To decide to choose just 1 column as `index key` or `composite key`, we need to see if the query is frequently used
+  - If it's not frequently used then the lookup time is not significant, we should only use 1 column as `index key`
+  - If it's very frequently used, we should use `composite key` to increase overall performance.
