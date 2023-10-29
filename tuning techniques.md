@@ -13,11 +13,6 @@
 - Usually if a query has result larger than `10%` of overall table size then scanning index and key look up will cost more than just full table scan.
 - The most ideal situation is result size is only about `1-2%`
 
-### Order by
-- `Order by` is a `costly` operation
-- If the index that being has already sorted the `Order by` column then the system doesn't have to sort again
-- If `Order by` descending, the system simply can just reverse the scan and doesn't cost any more than `Order by` ascending
-
 ### Leading column
 - When we create indexes, the first column is the most important column, also called leading column
 - This will dictate how the system decide to scan the index or table.
@@ -73,4 +68,96 @@
   create index idx_upper_name_emp on employees (uppercase(name));
   ```
 
-### Index Full scan and Fast full scan
+### Index full scan and Fast full scan
+- `Fast full scan` is similar to table fullscan but on indexes instead.
+- Normally `Fast full scan` features multi block or parallel scan
+- The Fast full scan is utilized when the index already has all column that the query needs but the leading column is not in WHERE conditions, for example
+  ```sql
+  select salary, first_name from employees where salary > 10000
+  ```
+- If the index has `salary` as the leading column then the optimizer will do an `index range scan`
+- If the index has `first_name` as the leading column, the optimizer can still scan the index but this time it has to do a `Fast full scan`
+- Therefore the leading column will decide what type of index scan it is.
+- We should always try to eliminate table scan because index scans are always faster
+- The optimizer uses skip scan when the selected columns doesn't contain some columns that the index doesn't have
+- If the index has all selected columns from the query then the optimizer does a fast full scan
+  ```sql
+  --create index with last_name as leading column
+  create index idx_last_name_salary on employees (last_name, salary);
+
+  --skip first_name and scan the index for last_name and salary then a table scan to get first_name
+  select first_name, last_name, salary from employees where salary > 10000;
+
+  --the index already has last_name and salary but salary is not the leading column so it does a fast full scan
+  select last_name, salary from employees where salary > 10000;
+  ```
+- `Index full scan`, unlike `fast full scan`, is singly scan
+- In case of `HAVING` and `GROUP BY`, indexes can still help improve performance but this depends on the costs and on how the data is clustered.
+  ```sql
+  --this could use index, depends on how salary is clustered
+  select salary, count(*) from employees group by salary having count(*) > 3;
+  ```
+
+### Order by
+- `Order by` is a `costly` operation
+- If the index that being has already sorted the `Order by` column then the system doesn't have to sort again
+- If `Order by` descending, the system simply can just reverse the scan and doesn't cost any more than `Order by` ascending
+- We need to include the Order by column in indexes to improve performance
+  ```sql
+  select first_name, birthday, salary from employees where salary > 10000 order by birthday;
+
+  --the following index helps improve ORDER BY's performance
+  create index idx_emp on employees (salary, birthday, first_name)
+  ```
+### When to create indexes?
+- `Primary / Unique key`: most databases create indexes on primary / unique constraint by default, this helps improve performance of key lookup
+- `Foreign key`: databases don't create indexes on foreign keys by default but if we ever delete data from parent tables then creating indexes for foreign keys in child tables is a must. This prevents locks when multiple sessions execute DML like `UPDATE` or `DELETE`
+- `Distinct`: indexes can also help improve performance on SELECT DISTINCT 
+- `Covering index`: we can consider selected columns to be included as well if they're queried frequently and we need to select the leading column carefully, based on the `WHERE`, `ORDER BY` and `GROUP BY` condition
+
+### Descending index
+- When we `ORDER BY` multiple columns in descending order, the system will have to sort the result after scanning index
+  ```sql
+  --by default last_name is sorted in ascending order
+  select * from employees where salary > 10000 order by first_name, last_name desc
+  ```
+- To prevent this, we can create descending index
+  ```sql
+  create index idx_emp on employees (salary, first_name, last_name desc)
+  ```
+- The order of `ORDER BY` columns also dictates whether the system has to sort the result
+
+### Reverse key index
+- This index helps solve the problem with hot objects, when multiple sessions doing `INSERT` to an index
+- `Reverse key index` reverses the ID 123 -> 321, 124 -> 421, 461 -> 164 ...
+- This helps spread the rows evenly between leaves and avoid multiple sessions accessing the same index block
+  ```sql
+  --Oracle only
+  alter index idx_emp rebuild reverse
+  ```
+- However reverse indexes cannot do range scan as the IDs are unordered
+  ```sql
+  --full table scan
+  select * from employees where salary > 10000
+  --can index scan
+  select * from employees where salary = 10000
+  ```
+### Bitmap index
+- Bitmap index is suitable when there are not many unique values and the schema is designed as a `star schema`
+- When we create a bitmap index on the central table, each unique value of other tables that have referenced columns in the central table is a column in the index
+- For example we have table `employees`, `jobs`, `gender`
+  | employees        | jobs             | genders             |
+  | ---------------- | ---------------- | ------------------- |
+  | ID int PK        | ID int PK        | ID int PK           |
+  | name varchar     | job_name varchar | gender_name varchar |
+  | job_id int FK    |                  |                     |
+  | gender_id int FK |                  |                     |
+- And create a bitmap index on `employees` and column `job_id`, each unique value is assigned to a column, if a row matches a value, the cell is 1, else it's 0.
+  | ID  | developer Bitmap | DBA Bitmap | manager Bitmap |
+  | --- | ---------------- | ---------- | -------------- |
+  | 1   | 0                | 1          | 0              |
+  | 2   | 1                | 0          | 0              |
+  | 3   | 0                | 1          | 0              |
+- Now the system can use AND and OR operator to find the satisfied rows.
+- Bitmap index is suitable for data warehouse, reporting or star schema and the `unique values` are `< 1% `of total values
+- The bitmap indexes should only be used with DML queries.
