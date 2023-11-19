@@ -161,3 +161,57 @@
 - Now the system can use AND and OR operator to find the satisfied rows.
 - Bitmap index is suitable for data warehouse, reporting or star schema and the `unique values` are `< 1% `of total values
 - The bitmap indexes should only be used with DML queries.
+
+### Partition index
+- When we parititon a table, we should create local indexes for each partition instead of using a global partition.
+- We can subpartition on a partition by other columns
+```sql
+--Oracle
+CREATE TABLE ts (id INT, purchased DATE)
+    PARTITION BY RANGE( YEAR(purchased) )
+    SUBPARTITION BY HASH( TO_DAYS(purchased) )
+    SUBPARTITIONS 2 (
+        PARTITION p0 VALUES LESS THAN (1990),
+        PARTITION p1 VALUES LESS THAN (2000),
+        PARTITION p2 VALUES LESS THAN MAXVALUE
+    );
+```
+### Operators that prevent Index scan
+- When we use `NOT IN` in the query, the optimizer might do a table scan instead of index scan because it believes this is too complicated
+  ```sql
+  select * from emp where salary not in (5000)
+  ```
+- To avoid this, we can avoid using `NOT IN` and use `IN` instead, this happens a lot when we query against `status` column
+  ```sql
+  --use this
+  select * from txn where txn_status in ('PENDING', 'REJECTED');
+  --instead of this 
+  select * from txn where txn_status not in ('COMPLETED');
+  ```
+- Another case of index is not used is when we use `LIKE` with a prefix wildcard like `%` and `_`
+  ```sql
+  select * from emp where first_name like '%Linh';
+  select * from emp where first_name like '_inh';
+  ```
+- This also happens if we use `IS NULL` because indexes cannot store null values
+  ```sql
+  select * from emp where first_name is null;
+  ```
+- We can fix this by pairing the nullable column with a value as the composite index key
+  ```sql
+  create index idx_first_name_emp on emp (first_name, 1)
+  ```
+
+### Index clustering factor
+- When we use ORDER BY in a query, the behavior of optimizer can be different depending on the ORDER BY column, it could scan table or index
+  ```sql
+  --table scan
+  select * from emp order by salary;
+  --index scan
+  select * from emp order by id;
+  ```
+- This is because tables only order data in inserting order so the key lookup cost could be huge, this is the `clustering factor`
+- We can fix this by creating a new table and order data by a column
+  ```sql
+  create emp_new as select * from emp order by salary
+  ```
