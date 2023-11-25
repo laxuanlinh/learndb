@@ -215,3 +215,28 @@ CREATE TABLE ts (id INT, purchased DATE)
   ```sql
   create emp_new as select * from emp order by salary
   ```
+### Index when delete table records
+- When we delete table records, indexes don't delete their leaves but only make them empty.
+  ```sql
+  delete * from emp;
+  analyze index idx_name validate structure;
+  select height, lf_rows, lf_blks, del_lf_rows from INDEX_STATS;
+  ```
+  | HEIGHT | LF_ROWS | LF_BLKS | DEL_LF_ROWS |
+  | ------ | ------- | ------- | ----------- |
+  | 2      | 1000    | 4       | 1000        |
+- This is to ensure the B-tree remains balanced
+- If we delete some rows and update the leading rows then the index has to add more leaves and data blocks to store new values
+  ```sql
+  update emp set name = name || ' new suffix';
+  analyze index idx_name validate structure;
+  select height, lf_rows, lf_blks, del_lf_rows from INDEX_STATS;
+  ```
+| HEIGHT | LF_ROWS | LF_BLKS | DEL_LF_ROWS |
+| ------ | ------- | ------- | ----------- |
+| 2      | 1590    | 7       | 590         |
+- The more we update the rows (update or delete), the more blocks are used even though the number of rows is unchanged
+- This leads to fragmented indexes which decrease the performance of the indexes.
+- We can fix this by REBUILD or SHRINK indexes
+- REBUILD requires more temp space and resources, especially with large indexes, however during REBUILD process, the system updates the latest statistics and we can update the properties of the index like PARALLEL
+- SHRINK requires less resources but it doesn't update statistics
