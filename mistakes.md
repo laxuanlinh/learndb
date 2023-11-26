@@ -254,4 +254,4 @@ SELECT NEXTVAL('testing1'); --3
 
 ## Underutilized reserve resources
 - We usually have standby databases that synchronized from main database but it's only used when the database goes down.
-- We should utilize the standby database as read-only database for reporting.
+- We should utilize the standby database as read-only database for reporting to distribute load.

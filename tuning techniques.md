@@ -240,3 +240,46 @@ CREATE TABLE ts (id INT, purchased DATE)
 - We can fix this by REBUILD or SHRINK indexes
 - REBUILD requires more temp space and resources, especially with large indexes, however during REBUILD process, the system updates the latest statistics and we can update the properties of the index like PARALLEL
 - SHRINK requires less resources but it doesn't update statistics
+
+## Partition
+- Partition key is the most important factor
+- There are 2 main types of partitioning methods
+  - Regular partitioning: list, range, hash
+  - Composite partitioning: combination of other types
+### Range partitioning
+```sql
+create table sale_range 
+(salesman_id number(5), 
+salesman_name varchar(30), 
+sales_amount number(10), 
+sales_date date) 
+partition by range(sales_date)
+(
+  partition sales_jan2000 values less than (to_date('02/01/2000', 'DD/MM/YYYY')),
+  partition sales_feb2000 values less than (to_date('02/02/2000', 'DD/MM/YYYY')),
+  partition sales_mar2000 values less than (to_date('02/03/2000', 'DD/MM/YYYY'))
+)
+```
+- If we run out of parititions, we can `add paritition`
+- Or we can use `partition max`
+
+### Hash partitioning
+- Instead of having growing number of partitions by range, we can divide into fixed number of equally distributed partitions using hash partitioning
+
+### List partitioning
+- Similar to range partitioning but instead of choosing a range of values, we choose the explicit values
+```sql
+create table employees (
+  id int,
+  first_name varchar(30),
+  store_id int
+)
+partition by list(store_id) (
+  partition pNorth values in (1, 3, 5, 7),
+  partition pEast values in (2, 4, 6, 8)
+  partition pWest values in (9, 10, 11)
+)
+```
+
+### Composite partitioning
+- We can combine other partitioning methods into 1 partition key

@@ -102,3 +102,9 @@ create table employees
 copy employees from '/Users/laxuanlinh/Downloads/employees-bk.csv' with (format csv)
 ```
 - Or we can restore from the sql file.
+
+### Check if a table doesn't have enough indexes
+- To check if a table doesn't have enough indexes, we need to see if its queries have `seq scan` in their execution plans
+```sql
+select * from pg_stat_all_tables where schemaname = 'public' and seq_scan > 0;
+```
