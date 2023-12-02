@@ -281,5 +281,33 @@ partition by list(store_id) (
 )
 ```
 
-### Composite partitioning
+### Composite partitioning or Subpartition
 - We can combine other partitioning methods into 1 partition key
+- Subpartition is when we partition a partition.
+- This help with performance when queries on multiple columns.
+- For example if we have a transaction table 
+  ```sql
+  create table txn (
+    txn_id int primary key,
+    branch varchar(30),
+    txn_date datetime
+  )
+  ```
+- We can partition by `branch` then by `txn_date` and improve performance of queries such as
+  ```sql
+  select * from txn where branch = 'Hanoi' and txn_date > '01-01-2023 00:00:000'
+  ```
+- For queries that only has 1 column, subpartitioning can still improve performance.
+
+### Mistakes when using partition
+- If the optimizer has to spend time converting data type in the queries, it will takes significant more time despite it still uses partitions
+  ```sql
+  select * from sales where time_id between '01-JAN-00' to '01-DEC-00' --takes much longer
+  select * from sales where time_id between '01-JAN-2000' to '01-DEC-2000' --takes less time
+  ```
+- The same can happen if we use functions on the partition keys
+  ```sql
+  select * from sales where to_date(time_id, 'dd-mm-yyyy') between to_date ('01-04-2000', 'dd-mm-yyyy') and to_date ('01-04-2001', 'dd-mm-yyyy')
+  ```
+- If we update a record with a new value in the partition key column, it will take time to move this record from a partition block to another, we can mitigate this by deleting and adding a new record. However if we have to constantly update partition key columns then there are problems with our parititoning strategy
+- 
