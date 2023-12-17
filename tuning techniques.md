@@ -310,4 +310,24 @@ partition by list(store_id) (
   select * from sales where to_date(time_id, 'dd-mm-yyyy') between to_date ('01-04-2000', 'dd-mm-yyyy') and to_date ('01-04-2001', 'dd-mm-yyyy')
   ```
 - If we update a record with a new value in the partition key column, it will take time to move this record from a partition block to another, we can mitigate this by deleting and adding a new record. However if we have to constantly update partition key columns then there are problems with our parititoning strategy
-- 
+
+## Statistics
+- The optimizer needs to collect the object, database and system statistics to calculate the best execution plans
+- For object, it usually collects information about:
+  - Size
+  - Number of data block
+  - Number of rows
+  - Data distribution
+  - Null values
+  - Number of distinct values
+- For system, it usually collects:
+  - CPU
+  - RAM
+  - OS
+  - Drive
+- For database, we have other parameters. If we change a parameter in database, it might change the execution plans of the entire database
+- We need to check if the optimizer has all the information it needs about the database such as size and number of data blocks.
+- If a query which runs fine, suddenly runs slowly, first we need to check if the object statistics or database parameters have been changed, then the system statistics.
+- The database parameters changes are usually in Alert logs (Postgres)
+- We can also check the execution plan hash value to see when this plan is generated
+- For object statistics, we need to check if they're the latest and correct (number of rows), check if the optimizer has statistics about `WHERE` and `JOIN` columns (distict values, null)
