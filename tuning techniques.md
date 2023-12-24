@@ -353,6 +353,7 @@ insert into emp values (1, 'Linh but session 2');
 - We also needs to rebuild indexes, preferably with `PARALLEL` enabled.
 
 ## Join
+- Join order doesn't make a difference in performance, it only requires the system to parse the query again.
 - When we `JOIN` multiple tables, the optimizer actually does the physical joins
   - `Nested loop join`
   - `Hash join`
@@ -410,4 +411,3 @@ insert into emp values (1, 'Linh but session 2');
 - So now the optimizer does the followings:
   1. Range scan `dept` index to get `dpt_id` to scan and `dept_name`
   2. Range scan `emp` index, filter using `salary` and `dpt_id`, then it also gets `first_name`
-   
