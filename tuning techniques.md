@@ -331,3 +331,83 @@ partition by list(store_id) (
 - The database parameters changes are usually in Alert logs (Postgres)
 - We can also check the execution plan hash value to see when this plan is generated
 - For object statistics, we need to check if they're the latest and correct (number of rows), check if the optimizer has statistics about `WHERE` and `JOIN` columns (distict values, null)
+
+## Locks
+- `Lock conflicts` usually happen with DML commands. 
+- If insert query is slow then it's likely due to `Lock conflicts`
+- If we have 2 sessions insert to the same tables at the same time
+```sql
+insert into emp values (1, 'Linh');
+insert into emp values (1, 'Linh but session 2');
+```
+- The second command could be locked until the first command either commits or rollbacks because there is a unique constraint
+- Triggers could also lead to locks, if a DML command triggers another DML command to a different table and that table is locked then the original DML command is locked as well, so we need to check if our tables are using triggers
+
+## Fragmentation
+- Table fragmentation happens when we delete data from tables
+- When we insert data into table, it reaches a limit called `High water mark`
+- However when we delete data, the `High water mark` doesn't go down and if we insert more data, instead of appending new data block, it scans the whole table to look for free data blocks, this leads to slowness
+- One of the easiest way to defragmentation is to move table space
+- When we move a table to another tablespace to the same tablespace, the system automatically defratments
+- However this method requires downtime
+- We also needs to rebuild indexes, preferably with `PARALLEL` enabled.
+
+## Join
+- When we `JOIN` multiple tables, the optimizer actually does the physical joins
+  - `Nested loop join`
+  - `Hash join`
+  - `Sort merge join`
+### Nested loop join
+- When JOIN 2 tables, the optimizer chooses 1 table to be the `Driving table`
+- For each element of the `driving table`, it scans the other table (`Inner table`) to find the matched rows, hence `nested loop`
+- We can optimize JOIN queries using indexes and we need to select the leading columns correctly
+  ```sql
+  select * from emp e
+  join dept d
+  on e.dpt_id = d.dpt_id and e.salary > 500
+  ```
+- In this case the optimizer does the followings:
+  1. Loop `dept` index to get `dpt_id`
+  2. Access full `emp` table to find the correct `dpt_id` and `salary` and the rest of the information
+  3. Access `dept` table to get the rest of the information
+- The `Full access` to `emp` table is the most costly and we can improve it by creating index on the `dpt_id` and `salary` column
+- If we simply create index on just 1 column `dpt_id` then the optimizer does the followings:
+  1. Loop `dept` index to get `dpt_id`
+  2. Scan the `emp` index and use `dpt_id` to filter the correct rows
+  3. Access `emp` table to find the rows with `salary > 500` and the rest of the information
+  4. Access `dept` table to find the rest of the information
+- We can still improve this by creating index on both `dept_id` and `salary`
+- Since accessing `emp` table to find rows with `salary > 500` is the most costly, we will make `salary` the leading column
+  ```sql
+  create index idx_emp_salary_dptid on emp (salary, dpt_id);
+  ```
+- Now the optimizer does the followings
+  1. Loop `dept` index to get `dpt_id`
+  2. Scan `emp` index, use `salary` to filter the correct `salary` rows, then find the correct `dpt_id` rows
+  3. Access `emp` table with ID lookup to find the rest of the information
+  4. Access `dept` table to find the rest of the information
+- This costs so much less because most of the lookup and filter work is done by indexes already
+- However if we choose dpt_id before salary
+  ```sql
+  create index idx_emp_dptid_salary on emp (salary, dpt_id)
+  ```
+- Now instead of range scan to filter `salary` in `emp` index, it has to `skip scan` to find these rows first, then find the `dpt_id` later, this is still fast but not as optimal
+- However there is still a way to make this faster, as we can see, we still have to access both tables by ID lookup to find the rest of the information, we can improve this by selecting specific columns and create indexes on these columns
+  ```sql
+  select e.first_name, d.dept_name from emp e
+  join dept d
+  on e.dpt_id = d.dpt_id and e.salary > 500
+  ```
+- For `emp`, we need to create index on `salary`, `dpt_id` and `first_name`
+  ```sql
+  create index idx_emp on emp(salary, dpt_id, first_name)
+  ```
+- For `dept`, we need to create index on `dpt_id` and `dept_name` so it doesn't have to ID look up the `dept` table to get the rest of the data.
+- Because `dpt_id` is the primary key, the combination of `dpt_id` and `dept_name` is also unique, so we can create a unique index here, which makes it faster
+  ```sql
+  create unique index idx_dept on dept(dpt_id, dept_name)
+  ```
+- So now the optimizer does the followings:
+  1. Range scan `dept` index to get `dpt_id` to scan and `dept_name`
+  2. Range scan `emp` index, filter using `salary` and `dpt_id`, then it also gets `first_name`
+   
