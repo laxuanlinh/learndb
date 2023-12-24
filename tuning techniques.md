@@ -411,3 +411,38 @@ insert into emp values (1, 'Linh but session 2');
 - So now the optimizer does the followings:
   1. Range scan `dept` index to get `dpt_id` to scan and `dept_name`
   2. Range scan `emp` index, filter using `salary` and `dpt_id`, then it also gets `first_name`
+
+### Hash join
+- Used on large tables and data is unordered
+- It can only be used with equal `WHERE` condition
+- The database first selects a table and creates a hashed table in memory
+- Then it loops through the second table and hash each value to find the matched hashed value
+- This algorithm is very RAM consuming so it's usually used in systems with lots of RAM
+- Hash join can shorten the first table because duplicate values will be hashed into 1 row so some times it's faster than nested loop join
+- However because it has to create a hash table at the beginning, it's usually slower to retrieve the first element compare to nested loop join.
+
+### Merge sort join
+- The idea here is to sort both table first then use merge sort to filter out smaller or greater values so we don't have to scan the whole table
+- Give 2 tables
+| Table A | Table B |
+| ------- | ------- |
+| 3       | 2       |
+| 5       | 7       |
+| 1       | 2       |
+| 5       | 8       |
+| 2       | 4       |
+| 3       | 7       |
+- We first sort them
+| Table A_temp | Table B_temp |
+| ------------ | ------------ |
+| 1            | 2            |
+| 2            | 2            |
+| 3            | 4            |
+| 3            | 7            |
+| 5            | 7            |
+| 5            | 8            |
+- Then we can compare the first element of `Table A_temp` to first element of `Table B_temp`
+- Because 1 < 2, we stop looking and move to the next element in `Table A_temp` because we know for sure there is no value in `Table B_temp` equal to 1
+- Then we move to 2, we find 2 rows in `Table B_temp` that are also 2
+- When moving to the next row in `Table B_temp`, we find 4, which is > 2 so we stop and check the next row of `Table A_temp`
+- Repeat and we have filtered out a lot of rows in both `Table A_temp` and `Table B_temp`
