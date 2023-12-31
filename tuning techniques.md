@@ -343,6 +343,53 @@ insert into emp values (1, 'Linh but session 2');
 - The second command could be locked until the first command either commits or rollbacks because there is a unique constraint
 - Triggers could also lead to locks, if a DML command triggers another DML command to a different table and that table is locked then the original DML command is locked as well, so we need to check if our tables are using triggers
 
+### Multiple session lock case study
+- Given a table with 250 records, accessed by 250 sessions, each session updates 1 different record, however they're all slow.
+  | Row | Session        |
+  | --- | -------------- |
+  | 1   | Update row 1   |
+  | 2   | Update row 2   |
+  | ... | ...            |
+  | 250 | Update row 250 |
+- This happens because these 250 records are all stored in a `data block`
+- When a transaction updates a row, the database allocate part of that same `data block` to manage the update, this happens to all other transactions which could lead to the `data block` runs out of space for update
+- If we configure each data block to be 8K and it only has 200 slots for 200 transactions, then the other 50 have to wait.
+- One way we can solve this is to increase data block size to 16K or 32K
+- But a better way is to split the data to multiple `data blocks`
+
+### Check database locks
+- We can use the following query to list all locking queries
+```sql
+SELECT
+'alter system kill session ''' || SID || ',' || s.serial# || ',@'||inst_id||''';' as "Kill Scripts" ,sid,username,serial#,process,NVL (sql_id, 0),
+blocking_session,wait_class,event,seconds_in_wait
+FROM gv$session s WHERE blocking_session_status = 'VALID'
+OR sid IN (SELECT blocking_session
+FROM gv$session WHERE blocking_session_status = 'VALID');
+```
+- The first column also provides the kill session command, or we can use the PID to kill the process at OS level.
+- To show the lock history, for example 1 transaction locks other transactions, we can use the blocking session tree
+  ```sql
+  SELECT level,
+        LPAD(' ', (level-1)*2, ' ') || NVL(s.username, '(oracle)') AS username,
+        s.osuser,
+        s.sid,
+        s.serial#,
+        s.lockwait,
+        s.status,
+        s.module,
+        s.machine,
+        s.program,
+        TO_CHAR(s.logon_Time,'DD-MON-YYYY HH24:MI:SS') AS logon_time
+  FROM   v$session s
+  WHERE  level > 1
+  OR     EXISTS (SELECT 1
+                FROM   v$session
+                WHERE  blocking_session = s.sid)
+  CONNECT BY PRIOR s.sid = s.blocking_session
+  START WITH s.blocking_session IS NULL;
+  ```
+
 ## Fragmentation
 - Table fragmentation happens when we delete data from tables
 - When we insert data into table, it reaches a limit called `High water mark`
